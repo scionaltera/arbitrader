@@ -787,22 +787,20 @@ public class TradingService {
         final Observable<OpenOrders> longOpenOrdersObservable = checkForOpenOrders(spread.getLongExchange());
         final Observable<OpenOrders> shortOpenOrdersObservable = checkForOpenOrders(spread.getShortExchange());
 
-        //noinspection ResultOfMethodCallIgnored
         Observable
             .combineLatest(
                 shortOpenOrdersObservable,
                 longOpenOrdersObservable,
                 (shortResult, longResult) -> shortResult.getOpenOrders().isEmpty() && longResult.getOpenOrders().isEmpty())
-            .doOnError(error -> LOGGER.error("In open orders onError: ", error))
+            .doOnError(error -> LOGGER.error("👋 onError: {}", error.getMessage(), error))
             .doOnComplete(() -> {
-                LOGGER.info("In open orders onComplete");
                 openOrdersFlag.set(false);
 
                 // invalidate the balance cache because we know it's incorrect now
                 exchangeBalanceCache.invalidate(spread.getLongExchange(), spread.getShortExchange());
 
                 // yay!
-                LOGGER.info("Trades executed successfully!");
+                LOGGER.info("👍 Trades executed successfully!");
 
                 if (tradeVolume instanceof EntryTradeVolume) {
                     completeEntry(spread, exitSpreadTarget, longLimitPrice, shortLimitPrice, ((EntryTradeVolume)tradeVolume));
@@ -810,17 +808,13 @@ public class TradingService {
                     completeExit(spread, longLimitPrice, shortLimitPrice, ((ExitTradeVolume)tradeVolume));
                 }
             })
-            .doOnEach(aBoolean -> LOGGER.info("In open orders onEach: aBoolean = {}", aBoolean))
-            .subscribe(aBoolean -> {
-                LOGGER.info("In open orders subscribe");
-                LOGGER.info("aBoolean = {}", aBoolean);
-            });
+            .subscribe();
     }
 
     private Observable<OpenOrders> checkForOpenOrders(final Exchange exchange) {
         return Observable.fromCallable(() -> fetchOpenOrders(exchange).orElseThrow(Exception::new))
-            .retryWhen(throwableFlowable -> throwableFlowable.flatMap(throwable -> Observable.timer(3, TimeUnit.SECONDS)))
-            .repeatWhen(objectObservable -> objectObservable.delay(3, TimeUnit.SECONDS))
+            .retryWhen(throwableFlowable -> throwableFlowable.flatMap(throwable -> Observable.timer(10, TimeUnit.SECONDS)))
+            .repeatWhen(objectObservable -> objectObservable.delay(10, TimeUnit.SECONDS))
             .takeUntil((Predicate<? super OpenOrders>) openOrders -> openOrders.getOpenOrders().isEmpty())
             .doOnEach(notification -> LOGGER.warn(collectOpenOrders(exchange, notification.getValue())))
             .subscribeOn(Schedulers.io());
@@ -829,7 +823,7 @@ public class TradingService {
     // summarize all the open orders on an exchange, used while we're waiting for orders to fill
     private String collectOpenOrders(Exchange exchange, OpenOrders openOrders) {
         if (openOrders == null || openOrders.getOpenOrders().isEmpty()) {
-            return String.format("%s has no open orders\n", exchange.getExchangeSpecification().getExchangeName());
+            return String.format("%s has no open orders", exchange.getExchangeSpecification().getExchangeName());
         }
 
         String header = String.format("%s has the following open orders:\n", exchange.getExchangeSpecification().getExchangeName());
